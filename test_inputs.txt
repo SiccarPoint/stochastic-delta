@@ -1,0 +1,15 @@
+n 8000
+delr 0.1
+delt 0.1
+nt 100
+Q 1.
+ST 0.1
+SF 1.
+theta 1.
+rule 1
+activity_py 0.3
+erosion_py 0.2
+depo_py 0.4
+erosion_py_width 0.3
+depo_py_width 0.3
+drift 0.1
