@@ -3,7 +3,7 @@ import numpy as np
 from matplotlib.pyplot import colorbar, figure, show, plot, imshow
 import matplotlib.pyplot as plt
 
-num_versions = 30
+num_versions = 50
 
 mydelta = delta()
 ins = mydelta.read_input_file('synth_inputs.txt')
@@ -22,12 +22,14 @@ completenesses_walking = []
 completenesses_whole = []
 completenesses_restricted = []
 completenesses_noE = []
+completenesses_compensated = []
 
 for i in xrange(num_versions):
-    tscales, completenesses_walking = mydelta.execute('test_inputs.txt', SL_trajectory3, completeness_records=completenesses_walking, graphs=False, walking_erosion_depo=True)
-    tscales, completenesses_restricted = mydelta.execute('test_inputs.txt', SL_trajectory3, completeness_records=completenesses_restricted, graphs=False, restricted_channel_mass_conserved=True)
-tscales, completenesses_whole = mydelta.execute('test_inputs.txt', SL_trajectory3, completeness_records=completenesses_whole, graphs=False)
-tscales, completenesses_noE = mydelta.execute('test_inputs.txt', SL_trajectory3, graphs=False, completeness_records=completenesses_noE, never_erosion=True)
+    tscales, completenesses_walking = mydelta.execute('synth_inputs.txt', SL_trajectory3, completeness_records=completenesses_walking, graphs=False, walking_erosion_depo=True)
+    tscales, completenesses_restricted = mydelta.execute('synth_inputs.txt', SL_trajectory3, completeness_records=completenesses_restricted, graphs=False, restricted_channel_mass_conserved=True)
+    tscales, completenesses_compensated = mydelta.execute('synth_inputs.txt', SL_trajectory3, completeness_records=completenesses_compensated, graphs=False, compensation=True)
+tscales, completenesses_whole = mydelta.execute('synth_inputs.txt', SL_trajectory3, completeness_records=completenesses_whole, graphs=False)
+tscales, completenesses_noE = mydelta.execute('synth_inputs.txt', SL_trajectory3, graphs=False, completeness_records=completenesses_noE, never_erosion=True)
 mean_comp_walking = np.mean(completenesses_walking, axis=0)
 mean_comp_whole = np.mean(completenesses_whole, axis=0)
 mean_comp_restricted = np.mean(completenesses_restricted, axis=0)
@@ -62,15 +64,24 @@ plot(tscales, mean_comp_walking)
 plot(tscales, mean_comp_whole)
 plot(tscales, mean_comp_restricted)
 plot(tscales, completenesses_noE[0])
-
+plot(tscales, completenesses_compensated)
 figure(6)
+plt.gca().set_xscale('log')
+plt.xlabel('multiple of smallest tstep')
+plt.ylabel('completeness')
+for i in completenesses_compensated:
+    plot(tscales, i)
+
+figure(7)
 plt.gca().set_xscale('log')
 plt.xlabel('multiple of smallest tstep')
 plt.ylabel('completeness')
 for i in completenesses_walking:
     plot(tscales, i, color=(0.35,0.35,1.), ls='-.', lw=1.)
 for i in completenesses_restricted:
-    plot(tscales, i, color=(0.45,1.,0.45), ls='--', lw=1.)
+    plot(tscales, i, color=(0.45,1.,0.45), ls=':', lw=1.)
+for i in completenesses_compensated:
+    plot(tscales, i, color=(1.,0.55,0.55), ls='--', lw=1.)
 plot(tscales, mean_comp_walking, color=(0.,0.,1.), lw=3.)
 plot(tscales, mean_comp_whole, color=(1.,0.,0.), lw=3.)
 plot(tscales, mean_comp_restricted, color=(0.,1.,0.), lw=3.)

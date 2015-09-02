@@ -13,3 +13,4 @@ depo_py 0.4
 erosion_py_width 0.3
 depo_py_width 0.3
 drift 0.1
+compensation_depth 1.
