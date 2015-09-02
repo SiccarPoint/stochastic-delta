@@ -49,39 +49,46 @@ class delta(object):
         sedflux_modifier = 1.
         erosion_modifier = 1.
 
+        # now the stuff conditional on the param rules:
         if compensation:
+            compensation_depth = float(input_dict['compensation_depth'])
             erosion_py_width = float(input_dict['erosion_py_width'])
             depo_py_width = float(input_dict['depo_py_width'])
             assert erosion_py_width <= depo_py_width
             sedflux_modifier /= depo_py_width
             erosion_modifier = erosion_py_width/depo_py_width  # as above
-            section_position = np.random.rand()
             # ^these need to get halved for comparison with pys above
             drift = float(input_dict['drift'])
             pos_or_neg = 1.  #make this -1. to reverse the drift direction
-            channel_position = 2.*(np.random.rand(nt)-0.5)*drift  # the steps
+            channel_position_steps = 2.*(np.random.rand(nt)-0.5)*drift  # the steps
             channel_start = np.random.rand()
+            channel_position = channel_position_steps.copy()
             channel_position[0] = channel_start
-            depo_in_section = np.fabs(channel_start-section_position)<(
-                                                           erosion_py_width/2.)
+            section_position = np.random.rand()
+
             # ^ this tells us if we're counting the init pos as "active" or
             # "inactive" depo, and will govern how and when we jump the depo
             # locus.
             # \/ this stuff needs to go into the active loop now
+            looped_round = np.zeros(nt, dtype=int)
             for i in xrange(nt-1):
-                channel_position[i+1] += pos_or_neg*channel_position[i]
-                excess = channel_position[i+1]%1.
-                if channel_position[i+1] > 1.:  # reverse direction from 1
-                    pos_or_neg *= -1.
-                    #print channel_position[i+1]
-                    channel_position[i+1] = 1. - excess
-                    #print channel_position[i+1]
-                    #print '***'
+                # a looped model makes most sense here
+                ##channel_position[i+1] += pos_or_neg*channel_position[i]
+                channel_position[i+1] += channel_position[i]
+                #excess = channel_position[i+1]%1.
+                if channel_position[i+1] > 1.:  # loop to the other end
+                    ##pos_or_neg *= -1.
+                    ##channel_position[i+1] = 1. - excess
+                    channel_position[i+1] -= 1.
+                    looped_round[i+1] = 1
                 elif channel_position[i+1] < 0.:  # reverse direction from 0.
-                    pos_or_neg *= -1.
-                    channel_position[i+1] = 1. - excess
-            historic_high = 0.
-        # now the stuff conditional on the param rules:
+                    ##pos_or_neg *= -1.
+                    ##channel_position[i+1] = 1. - excess
+                    channel_position[i+1] += 1.
+                    looped_round[i+1] = -1.
+            compensational_base = 0.
+            accumulated_OOS_py = 0.  # this is a ratchet to control when to
+            # skip in & out of section
         if evolving_pys:
             assert compensation is False, "Cannot use evolving_pys with compensation!!"
             if not rule_override:
@@ -120,22 +127,28 @@ class delta(object):
             section_position = np.random.rand()
             # ^these need to get halved for comparison with pys above
             drift = float(input_dict['drift'])
-            pos_or_neg = 1.  #make this -1. to reverse the drift direction
-            channel_position = 2.*(np.random.rand(nt)-0.5)*drift  # the steps
+            assert drift <= 1.
+            ##pos_or_neg = 1.  #make this -1. to reverse the drift direction
+            channel_position_steps = 2.*(np.random.rand(nt)-0.5)*drift  # the steps
             channel_start = np.random.rand()
+            channel_position = channel_position_steps.copy()
             channel_position[0] = channel_start
+            looped_round = np.zeros(nt, dtype=int)
             for i in xrange(nt-1):
-                channel_position[i+1] += pos_or_neg*channel_position[i]
-                excess = channel_position[i+1]%1.
-                if channel_position[i+1] > 1.:  # reverse direction from 1
-                    pos_or_neg *= -1.
-                    #print channel_position[i+1]
-                    channel_position[i+1] = 1. - excess
-                    #print channel_position[i+1]
-                    #print '***'
+                # a looped model makes most sense here
+                ##channel_position[i+1] += pos_or_neg*channel_position[i]
+                channel_position[i+1] += channel_position[i]
+                #excess = channel_position[i+1]%1.
+                if channel_position[i+1] > 1.:  # loop to the other end
+                    ##pos_or_neg *= -1.
+                    ##channel_position[i+1] = 1. - excess
+                    channel_position[i+1] -= 1.
+                    looped_round[i+1] = 1
                 elif channel_position[i+1] < 0.:  # reverse direction from 0.
-                    pos_or_neg *= -1.
-                    channel_position[i+1] = 1. - excess
+                    ##pos_or_neg *= -1.
+                    ##channel_position[i+1] = 1. - excess
+                    channel_position[i+1] += 1.
+                    looped_round[i+1] = -1.
         # all these methods need this...
         py_thresholds_depo = np.random.rand(nt)
         py_thresholds_inc = np.random.rand(nt)
@@ -160,10 +173,23 @@ class delta(object):
                 stepwise_depo = np.ones(nt, dtype=bool)
                 stepwise_inc = np.zeros(nt, dtype=bool)
             elif walking_erosion_depo or compensation:
-                stepwise_depo = np.less(np.absolute(section_position-channel_position),
-                                        depo_py_width)
-                stepwise_inc = np.less(np.absolute(section_position-channel_position),
-                                       erosion_py_width)
+                channel_pos_off_ends = np.where(looped_round!=0,
+                                                channel_position+looped_round,
+                                                channel_position)
+                stepwise_depo = np.less(np.absolute(section_position-channel_pos_off_ends),
+                                        depo_py_width/2.)
+                stepwise_inc = np.less(np.absolute(section_position-channel_pos_off_ends),
+                                       erosion_py_width/2.)
+                if compensation:
+                    deposition_accum = np.zeros(100, dtype=int)
+                    # ^ a quantized number line to record where and how much
+                    # depo we've had...
+                    depo_in_section = stepwise_depo[0]
+                    if depo_in_section:
+                        accumulated_OOS_py_incl_section = True
+                    else:
+                        accumulated_OOS_py_incl_section = False
+                    channel_position_at_switch = channel_start
                 # these aren't defined if pys evolve
         elif not evolving_pys:
             stepwise_depo = np.ones(nt, dtype=bool)
@@ -183,8 +209,10 @@ class delta(object):
             inc_term_in = 1.
 
         R = 0.  # initial shoreline position
+        R_OOS = 0.  # init for the alt. section, if using compensation
         doc = SL_trajectory[0]
         RF = doc/SF  # initial toe position
+        RF_OOS = float(RF)
         Qvol = 0.  # sed vol added to delta at current time
 
         pr = 1 # variable for setting print interval
@@ -206,11 +234,27 @@ class delta(object):
         Qvol_lasttime = 0.
         DelVol = 0.
 
+        if compensation:
+            Qvol_lasttime_OOS = 0.
+            out_of_section_eta = eta.copy()
+            out_of_section_oldeta = eta.copy()
+            OOS_head_baselevel = out_of_section_oldeta[0]  # updates below
+            # the scheme here is that if depo_in_section is FALSE at t=0, we
+            # track BOTH the actual section and also the topo at that point.
+            # once *that* section hits the compensation depth, we "avulse" to
+            # a new randomly selected section, resetting the topo to whatever
+            # it was at the time of the first avulsion. Once we have "filled"
+            # the "other topo", we avulse to a low point.
+            # This is achieved by tracking in some sense where depo is
+            # happening between avulsion events, using the deposition_accum
+            # array, then selecting the lowest areas from this.
+            # Note we move the section of we're tracking *with* the stream
+            # line. i.e., the compensation depth doesn't feel the "walking"
+            # of the channel position, and it always goes up and down if it
+            # can.
+
         for jj in xrange(nt):  # time loop
             print(jj)
-
-            if compensation:
-                pass
 
             if evolving_pys is True:
                 # question arised here if we should also modify sedflux_modifier when
@@ -285,11 +329,11 @@ class delta(object):
                             sedflux_modifier = 1./depo_term_in
                             erosion_modifier = inc_term_in/depo_term_in
                     depo_can_occur = np.less(np.absolute(section_position -
-                                                         channel_position[jj]),
-                                             depo_py_width)
+                                                     channel_pos_off_ends[jj]),
+                                             depo_py_width/2.)
                     erosion_can_occur_on_topset = np.less(np.absolute(
-                                                section_position-channel_position[jj]),
-                                                          erosion_py_width)
+                                    section_position-channel_pos_off_ends[jj]),
+                                                          erosion_py_width/2.)
                 else:
                     raise NameError
             else:
@@ -297,7 +341,7 @@ class delta(object):
                 erosion_can_occur_on_topset = stepwise_inc[jj]
 
             #Qvol += delt  # vol of sed added to delta  # DEJH added the Q
-            if depo_can_occur or compensation:
+            if depo_can_occur:
                 Qvol += Q*delt*sedflux_modifier
                 R += delr.min()
                 diff = 1.
@@ -312,7 +356,6 @@ class delta(object):
             #R += delr  # initial guess for shoreline
             RF = R + doc/SF  # initial foreset toe position
 
-            last_diff = -np.inf
             while abs(diff)> diff_thresh:
                 # calculate new sed height in each volume using geometry rules
 
@@ -376,6 +419,93 @@ class delta(object):
             # loop terminates when diff is v small, indicating vol entered is same
             # as vol deposited
 
+            # now a special case for if we're doing compensation.
+            # the above still applies - in the actual section - but we're also
+            # handling a second section, which tracks the evolution of an
+            # idealized "out of section" delta slice
+            # Note that this section is treated as always eroding and always
+            # depositing... Visualized as effectively moving the section line
+            # with the channel thalweg as it migrates.
+            if compensation:
+                # Qvol is inherited from above
+                R_OOS += delr.min()
+                diff = 1.
+                RF_OOS = R_OOS + doc/SF
+                while abs(diff)> diff_thresh:
+                    distal_nodes = np.greater(rnode, RF_OOS)
+                    foreset_nodes = np.logical_and(np.less_equal(rnode, RF_OOS),
+                                                   np.greater(rnode, R_OOS))
+                    topset_nodes = np.less_equal(rnode, R_OOS)
+                    out_of_section_eta[distal_nodes] = out_of_section_oldeta[distal_nodes]
+                    out_of_section_eta[foreset_nodes] = np.maximum((RF_OOS-rnode[foreset_nodes])*SF,
+                                                        out_of_section_oldeta[foreset_nodes])
+                    # ^...depo now always occurs
+                    possible_topset_OOS_eta = (R_OOS-rnode[topset_nodes])*ST + doc
+                    Qerode_OOS = np.sum((out_of_section_oldeta[topset_nodes]-possible_topset_OOS_eta
+                        ).clip(0.)*delr[topset_nodes]*rnode[topset_nodes
+                            ])*theta*inc_term_in
+                    Qin_tot_OOS = (Qerode_OOS + Q*delt)/(theta * depo_term_in)
+                    out_of_section_eta[topset_nodes] = np.maximum(possible_topset_OOS_eta,
+                                                      out_of_section_eta[topset_nodes])
+                    DelVolOOS = (out_of_section_eta*delr*rnode).sum()
+                    diff = Qvol_lasttime_OOS + Qin_tot_OOS - DelVolOOS
+                    out_of_section_eta[topset_nodes] = possible_topset_OOS_eta
+                    # DelVol = (out_of_section_eta*delr*rnode).sum()  # don't think now needed
+                    R_OOS += relax_underest*diff
+                    RF_OOS = R_OOS + doc/SF
+                Qvol_lasttime_OOS = float(DelVolOOS)
+                current_head_OOS = float(out_of_section_eta[0])
+                # Now here, we modify the section position for next &
+                # subsequent times if we exceed the compensation depth
+                # (but the below all totally still works for the actual
+                # section!):
+                head_elevation = current_head_OOS - OOS_head_baselevel
+                superelevated = head_elevation > compensation_depth
+                if superelevated:
+                    print "superelevated!"
+                    # first, elevate the section we just worked on:
+                    high_edge = int((channel_position_at_switch+depo_py_width/2.)*100)
+                    low_edge = int((channel_position_at_switch-depo_py_width/2.)*100)
+                    deposition_accum[np.clip(low_edge, 0, 100):np.clip(high_edge, 0, 100)] += 1
+                    if high_edge >= 100:
+                        assert high_edge < 200
+                        deposition_accum[:(high_edge-100)] += 1
+                    elif low_edge < 0:
+                        assert low_edge >= -100
+                        deposition_accum[(low_edge+100):] += 1
+                    # then it's switchin' time
+                    # find the possible minima places...
+                    lowest_elev_val = deposition_accum.min()
+                    poss_places = np.where(deposition_accum==lowest_elev_val)[0]
+                    # pick a low one...
+                    which_one = int(np.random.rand()*poss_places.size)
+                    channel_position_at_switch = (poss_places[which_one]+np.random.rand())/100.
+                    if jj != nt-1:
+                        channel_position[jj+1] = float(channel_position_at_switch)
+                        looped_round[jj+1] = 0
+                        # reset the form to whatever the actual section
+                        # currently looks like!
+                        out_of_section_oldeta[:] = eta  # copy is automatic
+                        OOS_head_baselevel = out_of_section_oldeta[0]
+                else:
+                    if jj!=nt-1:  # all as above to reset new ch positions
+                        channel_position[jj+1] = channel_position[jj] + \
+                                                   channel_position_steps[jj+1]
+                        channel_pos_off_ends[jj+1] = float(channel_position[jj+1])
+                        if channel_position[jj+1] > 1.:  # loop to the other end
+                            channel_position[jj+1] -= 1.
+                            looped_round[jj+1] = 1
+                        elif channel_position[jj+1] < 0.:  # reverse direction from 0.
+                            channel_position[jj+1] += 1.
+                            looped_round[jj+1] = -1.
+                        stepwise_depo[jj+1] = np.less(np.absolute(section_position -
+                                                  channel_pos_off_ends[jj+1]),
+                                                  depo_py_width/2.)
+                        stepwise_inc[jj+1] = np.less(np.absolute(section_position -
+                                                  channel_pos_off_ends[jj+1]),
+                                                  erosion_py_width/2.)
+                        out_of_section_oldeta[:] = out_of_section_eta
+
             Qvol_lasttime = float(DelVol)  # force a copy
             tstore.append(jj*delt)
             Rstore.append(R)
@@ -410,7 +540,7 @@ class delta(object):
                 current_eta_old_rollovers = etanew[rollover_pixel[:jj]]
                 #rollover_eta = np.where(current_eta_old_rollovers>rollover_eta[:jj],
                 #                        rollover_eta, current_eta_old_rollovers)
-                erased_rollovers = np.where(current_eta_old_rollovers<rollover_eta[:jj])
+                erased_rollovers = np.where(current_eta_old_rollovers<rollover_eta[:jj])[0]
                 #rollover_eta[:jj][erased_rollovers] = current_eta_old_rollovers[erased_rollovers]
                 rollover_preserved[jj-1, erased_rollovers] = False
                 #print 'ceor: ', current_eta_old_rollovers
@@ -458,7 +588,7 @@ class delta(object):
             figure(2)
             plot(tstore, Rstore)
 
-            figure(6)
+            figure(1)
             plot(tstore, SL_trajectory)
 
             #print the strat
@@ -476,6 +606,11 @@ class delta(object):
             plt.ylabel('completeness')
             for i in completeness_records:
                 plot(timescales_of_completeness, i)
+
+            if compensation:
+                figure(6)
+                plot(deposition_accum)
+                plt.ylabel('depo thickness map')
 
         return timescales_of_completeness, completeness_records
 
