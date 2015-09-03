@@ -5,7 +5,6 @@
 # assumptions:
 # The topset always maintains its slope - eroding if required
 # In a rising BL the foreset can be abandoned
-# Tank has constant level basement
 # erosion w/o depo is always forbidden in a single section
 
 # Most likely cause of this code crashing is it reaching the RHS of its domain
@@ -16,6 +15,8 @@ import matplotlib.pyplot as plt
 
 class delta(object):
     """
+    This object creates, updates, and maintains a geometrically controlled
+    synthetic delta topography.
     """
 
     init_inputs = set(['n', 'delr', 'delt', 'nt', 'Q', 'ST', 'SF', 'theta'])
@@ -28,14 +29,140 @@ class delta(object):
 
     def execute(self, input_file, SL_trajectory,
                 print_strata=True, graphs=True, completeness_records=[],
+                initial_topo=None,
                 evolving_pys = False,
                 restricted_channel_mass_conserved = False,
                 decoupled_erosion_depo = False,
                 walking_erosion_depo=False,
                 compensation=False,
                 never_erosion=False,
-                ititial_topo=None,
                 **kwds):
+        """
+        Executes the construction of the geometric delta, following mass
+        balance scheme modifications as specified by the arguments. The delta
+        is represented as a one dimensional array, with the column height
+        representing the topography in this virtual delta section. Node spacing
+        is quadratic, to honor the spreading of the delta wedge in 2D.
+
+        This delta is used to explore trends in stratigraphic completeness,
+        and in particular, in shoreline completeness, sensu Mahon et al (2015).
+
+        Baselevel is the tank base, assumed at height = 0.
+
+        Parameters
+        ----------
+        input_file : string
+                Specifies the path to the text input file containing the
+                parameters with which to initialize the run.
+                Compulsory parameters are
+                    n : the number of nodes to use in the grid
+                    delr : spacing of the first two nodes in the array
+                    delt : the timestep at which to record stratigraphy
+                    nt : the total number of timesteps
+                    Q : the sediment flux, volume per time
+                    ST : the slope of the topset
+                    SF : the slope of the foreset
+                    theta : the spreading angle of the delta wedge
+                Additional parameters needed by each rule for building the
+                delta are listed below.
+        SL_trajectory : array-like
+                the sea level at each timestep
+        print_strata : bool (default True)
+                Whether to record and plot the actual preserved
+                stratigraphy in the delta. Setting False can accelerate
+                the code.
+        graphs : bool (default True)
+                Whether to plot graphs visualizing output once the method
+                completes. The plots are:
+                1. sea level vs time
+                2. shoreline position vs time
+                3. delta cross sectional stratigraphy (unless suppressed)
+                4. delta final topography
+                5. shoreline completeness vs timescale diagram
+                6. if 'compensation', a plot of virtual depositional
+                   thickness around the arc of the delta (used to move the
+                   channel line around to allow compensatory stacking)
+        completeness_records : list (optional)
+                If set, the new completeness array is appended to this list,
+                and this list returned, rather than just the array being
+                returned in a new, len-1 list.
+        initial_topo : len-2 tuple, or len-n array (optional)
+                If specified, allows an initial topography to be set. If an
+                array, this array is the initial topography. If a len-2 tuple,
+                this is the (r, z) coordinates of a rollover, defining a simple
+                initial delta topography.
+        evolving_pys : bool (default False)
+                If True, implements one of two rules which make incisional
+                dynamics different from aggradational dynamics. If rule==1,
+                the historic maximum topography is tracked. If current topo
+                is above this, deposition occurs across the whole delta top. If
+                below, if is restricted to a narrow channel (controlled by the
+                depo_py). If rule==2, the behavior in only the last timestep
+                determines whether the whole delta top experiences deposition.
+
+        These parameters are all then mutually exclusive. If none is set,
+        deposition and erosion both occur uniformly over the whole delta top at
+        all timesteps.
+
+        restricted_channel_mass_conserved : bool (default False)
+                If True, the parameter *activity_py* sets the probability that
+                incision and erosion can occur at any given timestep. Each
+                timestep is independent. If erosion can occur, deposition can
+                also occur, and vice versa.
+        decoupled_erosion_depo : bool (default False)
+                If True, the erosional probability and depositional probability
+                can be different. However, we still enforce that if erosion
+                can occur, then deposition must also be allowed in the section
+                (i.e., depo_py >= erosion_py). The probabilities are set by
+                the parameters *depo_py* and *erosion_py*. Each timestep is
+                independent.
+        walking_erosion_depo : bool (default False)
+                If True, the location of the channel center line, about which
+                the erosion and deposition loci are assumed to be symmetrically
+                distributed, is allowed to perform a random walk over the delta
+                top. The erosion and deposition widths are set with
+                *depo_py_width* and *erosion_py_width*, and both are scaled to
+                1 (i.e., they remain probabilities). The random walk takes
+                uniformly randomly distributed steps up to a value of *drift*
+                (also scaled to 1).
+        compensation : bool (default False)
+                If true, normal behavior is like walking_erosion_depo, and the
+                same parameters must be set. However, it also takes the param
+                *compensation_depth*, which allows "avulsions" on the delta
+                top. This is executed by tracking building a ghost topography
+                beneath the channel center line; once this topography has
+                aggraded more than compensation_depth since the last avulsion
+                event, the channel center line moves. The switch occurs to a
+                place on the delta top which is lowest or joint lowest (this
+                is recorded by tracking a radial section around the delta, and
+                assuming unit deposition of sediment thickness occurs
+                symmetrically distributed around the channel line each time the
+                channel avulses). After avulsion, the ghost section is assumed
+                to now have initial topography equivalent to the real section
+                at that time. This is broadly equivalent to the methods used
+                by Straub et al. 2009 (JSR).
+        never_erosion : bool (default False)
+                If True, erosion can never occur, and deposition can always
+                occur.
+
+        Finally, note any parameter that must be set in the parameter file can
+        also be passed as an argument to execute. This is intended to make
+        parameter space explorations much easier.
+
+        Returns
+        -------
+        timescales_of_completeness : array
+                The multiples of delt represented by each entry of the arrays
+                stored in completeness_records.
+        completeness_records : list of arrays
+                If the argument completeness_records was not supplied to
+                execute(), this is a length-1 list containing an array giving
+                the shoreline completeness at each timescale specified in
+                timescales_of_completeness. If completeness_records was set,
+                this input list will be returned, appended with this new array.
+
+
+        """
         # load the input params from the textfile:
         input_dict = self.read_input_file(input_file)
         # also check we don't need to overwrite anything from the arguments...
@@ -64,7 +191,7 @@ class delta(object):
         erosion_modifier = 1.
 
         # check for initial topo:
-        if ititial_topo is None:
+        if initial_topo is None:
             etanew = np.zeros_like(rnode)  # sed height in column
             eta = np.zeros_like(rnode)
         elif len(initial_topo) == 2:  # (x,z) of a single rollover
@@ -653,22 +780,33 @@ class delta(object):
         completeness_records.append(completeness_at_multiple)
 
         if graphs:
-            #print out shoreline
-            figure(2)
-            plot(tstore, Rstore)
-
+            #SL
             figure(1)
             plot(tstore, SL_trajectory)
+            plt.ylabel('Sea level')
+            plt.xlabel('Time')
+
+            #shoreline position
+            figure(2)
+            plot(tstore, Rstore)
+            plt.ylabel('Shoreline position')
+            plt.xlabel('Time')
 
             #print the strat
             if print_strata:
                 figure(3)
                 for i in xrange(nt):
                     plot(rnode, strat_eta[i,:])
+                plt.xlabel('Radial distance')
+                plt.ylabel('Height')
 
+            #print the final topography
             figure(4)
             plot(rnode, eta)
+            plt.xlabel('Radial distance')
+            plt.ylabel('Topographic height')
 
+            #print the completeness vs timecale diagram
             figure(5)
             plt.gca().set_xscale('log')
             plt.xlabel('multiple of smallest tstep')
@@ -676,10 +814,13 @@ class delta(object):
             for i in completeness_records:
                 plot(timescales_of_completeness, i)
 
+            # if appropriate, plot the virtualized loci of deposition around
+            # the delta arc (used in compensational stacking)
             if compensation:
                 figure(6)
                 plot(deposition_accum)
                 plt.ylabel('depo thickness map')
+                plt.xlabel('percent distance around delta arc')
 
         return timescales_of_completeness, completeness_records
 
@@ -721,17 +862,5 @@ if __name__ == "__main__":
     nt = int(ins['nt'])
     SL_trajectory = (np.random.rand(nt)*2.+0.2)
     SL_trajectory += np.arange(nt)*0.01
-    #SL_trajectory = np.ones(nt)
     mydelta.execute('test_inputs.txt', SL_trajectory)
-    # completenesses = []
-    # for i in xrange(10):
-    #     SL_trajectory = (np.random.rand(nt)*2.+0.2)
-    #     SL_trajectory += np.arange(nt)*0.01
-    #     tscales, completenesses = mydelta.execute('test_inputs.txt', SL_trajectory, completeness_records=completenesses, graphs=False)
-    # figure(1)
-    # plt.gca().set_xscale('log')
-    # plt.xlabel('multiple of smallest tstep')
-    # plt.ylabel('completeness')
-    # for i in completenesses:
-    #     plot(tscales, i)
     show()
