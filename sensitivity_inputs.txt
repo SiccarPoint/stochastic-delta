@@ -1,10 +1,10 @@
 n 20000
-delr 0.1
-delt 0.1
-nt 5514
-Q 1.
-ST 0.0612
-SF 0.6494
+delr 15.
+delt 1000.
+nt 200
+Q 1000.
+ST 0.03
+SF 0.63
 theta 1.5708
 rule 1
 activity_py 0.3
@@ -12,4 +12,5 @@ erosion_py 0.2
 depo_py 0.4
 erosion_py_width 0.3
 depo_py_width 0.3
-drift 0.1
+drift 0.15
+compensation_depth 1.
