@@ -409,7 +409,10 @@ class delta(object):
         doc = SL_trajectory[0]
         RF = doc/SF  # initial toe position
         RF_OOS = float(RF)
-        Qvol = 0.  # sed vol added to delta at current time
+        if initial_topo is None:
+            Qvol = 0.  # sed vol added to delta at current time
+        else:
+            Qvol = (eta*delr*rnode).sum()
 
         pr = 1 # variable for setting print interval
 
@@ -427,11 +430,11 @@ class delta(object):
         rollover_preserved = np.zeros((nt, nt), dtype=bool)
         self.rollover_preserved = rollover_preserved
 
-        Qvol_lasttime = 0.
+        Qvol_lasttime = float(Qvol)
         DelVol = 0.
 
         if compensation:
-            Qvol_lasttime_OOS = 0.
+            Qvol_lasttime_OOS = float(Qvol)
             out_of_section_eta = eta.copy()
             out_of_section_oldeta = eta.copy()
             OOS_head_baselevel = out_of_section_oldeta[0]  # updates below
