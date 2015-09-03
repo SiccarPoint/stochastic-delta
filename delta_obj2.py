@@ -124,7 +124,7 @@ class delta(object):
                 *depo_py_width* and *erosion_py_width*, and both are scaled to
                 1 (i.e., they remain probabilities). The random walk takes
                 uniformly randomly distributed steps up to a value of *drift*
-                (also scaled to 1).
+                (also scaled to 1). Boundary conditions are looped.
         compensation : bool (default False)
                 If true, normal behavior is like walking_erosion_depo, and the
                 same parameters must be set. However, it also takes the param
@@ -782,6 +782,8 @@ class delta(object):
 
         completeness_records.append(completeness_at_multiple)
 
+        self._volume = DelVol*theta
+
         if graphs:
             #SL
             figure(1)
@@ -857,6 +859,10 @@ class delta(object):
         for i in xrange(1, self.nt):
             completeness_at_multiple[i-1] = self.completeness_at_tscale(i)
         return timescales_of_completeness, completeness_at_multiple
+
+    @property
+    def volume(self):
+        return self._volume
 
 
 if __name__ == "__main__":
