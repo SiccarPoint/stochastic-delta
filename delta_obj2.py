@@ -34,10 +34,11 @@ class delta(object):
                 walking_erosion_depo=False,
                 compensation=False,
                 never_erosion=False,
+                ititial_topo=None,
                 **kwds):
         # load the input params from the textfile:
         input_dict = self.read_input_file(input_file)
-
+        # also check we don't need to overwrite anything from the arguments...
         for varname in self.init_inputs:
             try:
                 exec(varname + " = float(input_dict['" + varname + "'])")
@@ -59,10 +60,29 @@ class delta(object):
         px_left_edge[1:] = (rnode[1:] - rnode[:-1])/2. + rnode[1:]
         delr = rnode[1:]-rnode[:-1] #this is cludgey, should do accurately
         rnode = rnode[:-1]
-        etanew = np.zeros_like(rnode)  # sed height in column
-        eta = np.zeros_like(rnode)
         sedflux_modifier = 1.
         erosion_modifier = 1.
+
+        # check for initial topo:
+        if ititial_topo is None:
+            etanew = np.zeros_like(rnode)  # sed height in column
+            eta = np.zeros_like(rnode)
+        elif len(initial_topo) == 2:  # (x,z) of a single rollover
+            doc = initial_topo[1]
+            R = initial_topo[0]
+            RF = R + doc/SF
+            distal_nodes = np.greater(rnode, RF)
+            foreset_nodes = np.logical_and(np.less_equal(rnode, RF),
+                                           np.greater(rnode, R))
+            topset_nodes = np.less_equal(rnode, R)
+            eta = np.zeros_like(rnode)
+            eta[foreset_nodes] = (RF-rnode[foreset_nodes])*SF
+            eta[topset_nodes] = (R-rnode[topset_nodes])*ST + doc
+            etanew = eta.copy()
+        else:  # a whole topo was supplied
+            assert len(initial_topo) == rnode.size
+            eta = np.array(initial_topo)
+            etanew = eta.copy()
 
         # now the stuff conditional on the param rules:
         if compensation:
