@@ -182,13 +182,15 @@ class delta(object):
         self.delt = delt
         self.nt = nt
 
-        rnode = np.arange(0.5, n+0.5, 1.)**0.5 * delr
+        rnode = np.arange(0.5, n+0.5, 1.)**0.5 * delr/np.sqrt(0.5)
         px_left_edge = np.zeros_like(rnode)
         px_left_edge[1:] = (rnode[1:] - rnode[:-1])/2. + rnode[1:]
         delr = rnode[1:]-rnode[:-1] #this is cludgey, should do accurately
         rnode = rnode[:-1]
         sedflux_modifier = 1.
         erosion_modifier = 1.
+
+        assert np.any(SL_trajectory<=0.) == False
 
         # check for initial topo:
         if initial_topo is None:
@@ -416,8 +418,8 @@ class delta(object):
 
         pr = 1 # variable for setting print interval
 
-        diff_thresh = 0.001  # threshold for mass balancing
-        relax_underest = 0.005
+        diff_thresh = 0.0005*Q**0.333/delt  # threshold for mass balancing
+        relax_underest = 0.01/delr[0]/Q**0.333/delt
 
         tstore = []
         Rstore = []
@@ -557,7 +559,6 @@ class delta(object):
 
             while abs(diff)> diff_thresh:
                 # calculate new sed height in each volume using geometry rules
-
                 distal_nodes = np.greater(rnode, RF)
                 foreset_nodes = np.logical_and(np.less_equal(rnode, RF),
                                                np.greater(rnode, R))
@@ -783,17 +784,23 @@ class delta(object):
         completeness_records.append(completeness_at_multiple)
 
         self._volume = DelVol*theta
+        self.tstore = tstore
+        self.Rstore = Rstore
 
         if graphs:
             #SL
             figure(1)
-            plot(tstore, SL_trajectory)
+            plot(self.output_times, SL_trajectory)
+            plot(self.output_times[self.final_preserved],
+                 SL_trajectory[self.final_preserved], 'r.')
             plt.ylabel('Sea level')
             plt.xlabel('Time')
 
             #shoreline position
             figure(2)
-            plot(tstore, Rstore)
+            plot(self.output_times, self.shoreline_positions)
+            plot(self.output_times[self.final_preserved],
+                 self.shoreline_positions[self.final_preserved], 'r.')
             plt.ylabel('Shoreline position')
             plt.xlabel('Time')
 
@@ -863,6 +870,18 @@ class delta(object):
     @property
     def volume(self):
         return self._volume
+
+    @property
+    def final_preserved(self):
+        return self.rollover_preserved[-1]
+
+    @property
+    def output_times(self):
+        return np.array(self.tstore)
+
+    @property
+    def shoreline_positions(self):
+        return np.array(self.Rstore)
 
 
 if __name__ == "__main__":
