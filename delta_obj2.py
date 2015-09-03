@@ -18,6 +18,14 @@ class delta(object):
     """
     """
 
+    init_inputs = set(['n', 'delr', 'delt', 'nt', 'Q', 'ST', 'SF', 'theta'])
+    comp_inputs = set(['compensation_depth', 'erosion_py_width',
+                       'depo_py_width', 'drift'])
+    evolving_inputs = set(['rule',])
+    restricted_inputs = set(['activity_py',])
+    decoupled_inputs = set(['erosion_py', 'depo_py'])
+    walking_inputs = set(['erosion_py_width', 'depo_py_width', 'drift'])
+
     def execute(self, input_file, SL_trajectory,
                 print_strata=True, graphs=True, completeness_records=[],
                 evolving_pys = False,
@@ -25,19 +33,26 @@ class delta(object):
                 decoupled_erosion_depo = False,
                 walking_erosion_depo=False,
                 compensation=False,
-                never_erosion=False):
+                never_erosion=False,
+                **kwds):
         # load the input params from the textfile:
         input_dict = self.read_input_file(input_file)
-        n = int(input_dict['n'])
-        delr = float(input_dict['delr'])  # note this is overwritten below
-        delt = float(input_dict['delt'])
-        nt = int(input_dict['nt'])
+
+        for varname in self.init_inputs:
+            try:
+                exec(varname + " = float(input_dict['" + varname + "'])")
+            except KeyError:
+                exec(varname + " = float(kwds['" + varname + "'])")
+            try:  # if it's specified as a kwd, that takes precedence
+                exec(varname + " = float(kwds['" + varname + "'])")
+            except KeyError:
+                pass
+        # set the ones that should be ints:
+        n = int(n)
+        nt = int(nt)
+
         self.delt = delt
         self.nt = nt
-        Q = float(input_dict['Q'])
-        ST = float(input_dict['ST'])
-        SF = float(input_dict['SF'])
-        theta = float(input_dict['theta'])
 
         rnode = np.arange(0.5, n+0.5, 1.)**0.5 * delr
         px_left_edge = np.zeros_like(rnode)
@@ -51,14 +66,19 @@ class delta(object):
 
         # now the stuff conditional on the param rules:
         if compensation:
-            compensation_depth = float(input_dict['compensation_depth'])
-            erosion_py_width = float(input_dict['erosion_py_width'])
-            depo_py_width = float(input_dict['depo_py_width'])
+            for varname in self.comp_inputs:
+                try:
+                    exec(varname + " = float(input_dict['" + varname + "'])")
+                except KeyError:
+                    exec(varname + " = float(kwds['" + varname + "'])")
+                try:  # if it's specified as a kwd, that takes precedence
+                    exec(varname + " = float(kwds['" + varname + "'])")
+                except KeyError:
+                    pass
             assert erosion_py_width <= depo_py_width
             sedflux_modifier /= depo_py_width
             erosion_modifier = erosion_py_width/depo_py_width  # as above
             # ^these need to get halved for comparison with pys above
-            drift = float(input_dict['drift'])
             pos_or_neg = 1.  #make this -1. to reverse the drift direction
             channel_position_steps = 2.*(np.random.rand(nt)-0.5)*drift  # the steps
             channel_start = np.random.rand()
@@ -92,7 +112,15 @@ class delta(object):
         if evolving_pys:
             assert compensation is False, "Cannot use evolving_pys with compensation!!"
             if not rule_override:
-                rule = int(input_dict['rule'])
+                for varname in self.evolving_inputs:
+                    try:
+                        exec(varname + " = float(input_dict['" + varname + "'])")
+                    except KeyError:
+                        exec(varname + " = float(kwds['" + varname + "'])")
+                    try:  # if it's specified as a kwd, that takes precedence
+                        exec(varname + " = float(kwds['" + varname + "'])")
+                    except KeyError:
+                        pass
             if rule == 1:
                 using_rule_1 = True  # have to do this dynamically in the loop
                 using_rule_2 = False
@@ -107,26 +135,47 @@ class delta(object):
             using_rule_1 = False
             using_rule_2 = False
         if restricted_channel_mass_conserved:
-            activity_py = float(input_dict['activity_py'])
+            for varname in self.restricted_inputs:
+                try:
+                    exec(varname + " = float(input_dict['" + varname + "'])")
+                except KeyError:
+                    exec(varname + " = float(kwds['" + varname + "'])")
+                try:  # if it's specified as a kwd, that takes precedence
+                    exec(varname + " = float(kwds['" + varname + "'])")
+                except KeyError:
+                    pass
             erosion_py = activity_py
             depo_py = activity_py
             sedflux_modifier /= depo_py
         if decoupled_erosion_depo:
-            erosion_py = float(input_dict['erosion_py'])
-            depo_py = float(input_dict['depo_py'])
+            for varname in self.decoupled_inputs:
+                try:
+                    exec(varname + " = float(input_dict['" + varname + "'])")
+                except KeyError:
+                    exec(varname + " = float(kwds['" + varname + "'])")
+                try:  # if it's specified as a kwd, that takes precedence
+                    exec(varname + " = float(kwds['" + varname + "'])")
+                except KeyError:
+                    pass
             assert erosion_py <= depo_py
             # ^we need to assume this to handle mass balance
             sedflux_modifier /= depo_py
             erosion_modifier = erosion_py/depo_py
         if walking_erosion_depo:
-            erosion_py_width = float(input_dict['erosion_py_width'])
-            depo_py_width = float(input_dict['depo_py_width'])
+            for varname in self.walking_inputs:
+                try:
+                    exec(varname + " = float(input_dict['" + varname + "'])")
+                except KeyError:
+                    exec(varname + " = float(kwds['" + varname + "'])")
+                try:  # if it's specified as a kwd, that takes precedence
+                    exec(varname + " = float(kwds['" + varname + "'])")
+                except KeyError:
+                    pass
             assert erosion_py_width <= depo_py_width
             sedflux_modifier /= depo_py_width
             erosion_modifier = erosion_py_width/depo_py_width  # as above
             section_position = np.random.rand()
             # ^these need to get halved for comparison with pys above
-            drift = float(input_dict['drift'])
             assert drift <= 1.
             ##pos_or_neg = 1.  #make this -1. to reverse the drift direction
             channel_position_steps = 2.*(np.random.rand(nt)-0.5)*drift  # the steps
