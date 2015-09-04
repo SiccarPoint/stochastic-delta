@@ -786,6 +786,8 @@ class delta(object):
         self._volume = DelVol*theta
         self.tstore = tstore
         self.Rstore = Rstore
+        self.strat_eta = strat_eta
+        self.rnode = rnode
 
         if graphs:
             #SL
@@ -882,6 +884,14 @@ class delta(object):
     @property
     def shoreline_positions(self):
         return np.array(self.Rstore)
+
+    @property
+    def radial_distances(self):
+        return self.rnode
+
+    @property
+    def strata(self):
+        return self.strat_eta
 
 
 if __name__ == "__main__":
