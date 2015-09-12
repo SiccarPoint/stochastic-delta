@@ -9,8 +9,10 @@
 
 # Most likely cause of this code crashing is it reaching the RHS of its domain
 
+#######NB: overrides of params don't work with complicated runs (i.e., anything==True!!)
+
 import numpy as np
-from pylab import figure, plot, show, close
+from pylab import figure, plot, show, close, savefig
 import matplotlib.pyplot as plt
 
 class delta(object):
@@ -36,6 +38,8 @@ class delta(object):
                 walking_erosion_depo=False,
                 compensation=False,
                 never_erosion=False,
+                adj_thresh=1.,
+                save_strat=None,
                 **kwds):
         """
         Executes the construction of the geometric delta, following mass
@@ -99,6 +103,12 @@ class delta(object):
                 below, if is restricted to a narrow channel (controlled by the
                 depo_py). If rule==2, the behavior in only the last timestep
                 determines whether the whole delta top experiences deposition.
+        save_strat : None (default) or a tuple (int, [(max_r, max_z)])
+                If set to an tuple, saves the model stratigraphy every tuple[0]
+                model steps. Strat is downsampled to that step. Output is a
+                jpeg of the model at each step in the present directory.
+                The 2nd, enclosed, tuple is optional, and allows control of
+                the max dimensions of the plot.
 
         These parameters are all then mutually exclusive. If none is set,
         deposition and erosion both occur uniformly over the whole delta top at
@@ -171,16 +181,29 @@ class delta(object):
                 exec(varname + " = float(input_dict['" + varname + "'])")
             except KeyError:
                 exec(varname + " = float(kwds['" + varname + "'])")
-            try:  # if it's specified as a kwd, that takes precedence
-                exec(varname + " = float(kwds['" + varname + "'])")
-            except KeyError:
-                pass
+            if varname is not 'Q':
+                try:  # if it's specified as a kwd, that takes precedence
+                    exec(varname + " = float(kwds['" + varname + "'])")
+                except KeyError:
+                    pass
+            else:
+                try:  # if it's specified as a kwd, that takes precedence
+                    exec(varname + " = kwds['" + varname + "']")
+                except KeyError:
+                    pass
         # set the ones that should be ints:
         n = int(n)
         nt = int(nt)
 
         self.delt = delt
         self.nt = nt
+
+        if type(Q) is np.ndarray:
+            print 'Set Q as an array: ', Q
+            Qarray = Q.copy()
+        else:
+            Qarray = None
+            Q = float(Q)
 
         rnode = np.arange(0.5, n+0.5, 1.)**0.5 * delr/np.sqrt(0.5)
         px_left_edge = np.zeros_like(rnode)
@@ -415,13 +438,26 @@ class delta(object):
             Qvol = 0.  # sed vol added to delta at current time
         else:
             Qvol = (eta*delr*rnode).sum()
+            if len(initial_topo) == 2:
+                R = initial_topo[0]
+                R_OOS = initial_topo[0]  #should be more stable
+                #RF gets done in the loop anyway
 
         pr = 1 # variable for setting print interval
 
-        diff_thresh = 0.0005*Q**0.333/delt  # threshold for mass balancing
-        relax_underest = 0.01/delr[0]/Q**0.333/delt
+        try:
+            diff_thresh = 0.0005*(Q.mean()*sedflux_modifier)**0.333/delt*adj_thresh  # threshold for mass balancing
+        except AttributeError:
+            diff_thresh = 0.0005*(Q*sedflux_modifier)**0.333/delt*adj_thresh  # wasn't an array for Q
+            relax_underest = 0.01/delr[0]/(Q*sedflux_modifier)**0.333/delt
+        else:
+            relax_underest = 0.01/delr[0]/(Q.mean()*sedflux_modifier)**0.333/delt
+        # these thresholds are likely to be suspect if the pys evolve during the run
+        print 'diff_thresh: ', diff_thresh
+        print 'relax_underest: ', relax_underest
 
-        tstore = []
+        tstore = np.arange(nt)*delt
+        self.tstore = tstore
         Rstore = []
         eroded_this_step = np.zeros(nt, dtype=bool)
         deposited_this_step = np.zeros(nt, dtype=bool)
@@ -456,6 +492,10 @@ class delta(object):
 
         for jj in xrange(nt):  # time loop
             print(jj)
+            try:
+                Q = Qarray[jj]
+            except TypeError:  # Q wasn't supplied as an array
+                pass
 
             if evolving_pys is True:
                 # question arised here if we should also modify sedflux_modifier when
@@ -552,6 +592,10 @@ class delta(object):
                 Qerode = 0.
                 diff = 0.
 
+            # modify to ensure new depo can escape the existing sed stack:
+            first_node_under = np.where(np.less(eta, doc))[0][0]
+            if first_node_under > 0:
+                R = np.amax((R, rnode[first_node_under]))
 
             doc = SL_trajectory[jj]  # set SL
             #R += delr  # initial guess for shoreline
@@ -607,6 +651,8 @@ class delta(object):
 
                 # calc the diff betw vol added & vol in delta
                 # should be zero - a mismatch requires updating guess for shoreline
+
+                # print R, rnode[first_node_under-1], diff
 
 
                 # update guess for shoreline and toe
@@ -707,7 +753,7 @@ class delta(object):
                         out_of_section_oldeta[:] = out_of_section_eta
 
             Qvol_lasttime = float(DelVol)  # force a copy
-            tstore.append(jj*delt)
+            # tstore.append(jj*delt)
             Rstore.append(R)
 
             # handle the stratigraphic preservation
@@ -779,6 +825,42 @@ class delta(object):
                 #    plot(rnode, strat_eta[i,:])
                 #show()
 
+            if save_strat is not None:
+                font = {'size':16}
+                if not jj%int(save_strat[0]):
+                    close('save')
+                    close('save_SL')
+                    figure('save', figsize=(30,5))
+                    for s in xrange(0,jj,save_strat[0]):
+                        plot(rnode, strat_eta[s,:])
+                    plt.xlabel('Radial distance')
+                    plt.ylabel('Topographic height')
+                    try:
+                        plt.gca().set_xbound(0,save_strat[1][0])
+                    except IndexError:
+                        pass
+                    try:
+                        plt.gca().set_ybound(0,save_strat[1][1])
+                    except IndexError:
+                        pass
+                    plt.rc('font', **font)
+                    savefig('stratsave_'+str(jj)+'.jpeg')
+
+                    figure('save_SL', figsize=(10,10))
+                    plot(self.output_times, SL_trajectory, '0.5', lw=1)
+                    for s in xrange(0,jj,save_strat[0]):
+                        plot(self.output_times[rollover_preserved[jj,:]],
+                             SL_trajectory[rollover_preserved[jj,:]], 'ko')
+                    plot(self.output_times[jj], SL_trajectory[jj], 'r*')
+                    plt.xlabel('Time (s)')
+                    plt.ylabel('Water surface elevation (m)')
+                    plt.rc('font', **font)
+                    savefig('timesave_'+str(jj)+'.jpeg')
+
+
+            self.strat_eta = strat_eta
+#### delete after debug
+
         (timescales_of_completeness, completeness_at_multiple) = self.full_completeness()
 
         completeness_records.append(completeness_at_multiple)
@@ -823,7 +905,7 @@ class delta(object):
             #print the completeness vs timecale diagram
             figure(5)
             plt.gca().set_xscale('log')
-            plt.xlabel('multiple of smallest tstep')
+            plt.xlabel('timescale (y)')
             plt.ylabel('completeness')
             for i in completeness_records:
                 plot(timescales_of_completeness, i)
@@ -849,24 +931,29 @@ class delta(object):
                d[str(key)] = val
         return d
 
-    def completeness_at_tscale(self, timescale_multiple=1):
+    def completeness_at_tscale(self, timescale_multiple=1, record=None):
         num_windows = self.nt-timescale_multiple+1
         completeness_count = 0
+        if record is None:
+            record = self.rollover_preserved[-1,:]
         for i in xrange(num_windows):
-            completeness_count += np.any(self.rollover_preserved[-1,
-                                                     i:(i+timescale_multiple)])
+            completeness_count += np.any(record[i:(i+timescale_multiple)])
         return float(completeness_count)/num_windows
 
-    def full_completeness(self, timestep=1.):
+    def full_completeness(self, timestep=1., record=None):
         """
         Calculates, stores and plots the full range of possible completenesses
         for the whole delta.
+        If *record* is specified, it must be a boolean array, len(nt), and
+        will be used to calculate the completeness instead of the internal
+        record in the object.
         """
         completeness_at_multiple = np.empty(self.nt-1, dtype=float)
         timescales_of_completeness = (np.arange(self.nt-1, dtype=float)+1
                                       )*self.delt
         for i in xrange(1, self.nt):
-            completeness_at_multiple[i-1] = self.completeness_at_tscale(i)
+            completeness_at_multiple[i-1] = self.completeness_at_tscale(
+                                           timescale_multiple=i, record=record)
         return timescales_of_completeness, completeness_at_multiple
 
     @property
