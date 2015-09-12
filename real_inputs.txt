@@ -1,0 +1,12 @@
+n 6000
+delr 0.05
+delt 60.
+nt 2826
+Q 0.00002
+ST 0.0612
+SF 0.649
+theta 1.571
+activity_py 0.18135607321131447
+erosion_py_width 0.18135607321131447
+depo_py_width 0.18135607321131447
+drift 0.1

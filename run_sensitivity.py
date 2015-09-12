@@ -26,7 +26,7 @@ completenesses_compensated = []
 #     tscales, completenesses_walking = mydelta.execute('synth_inputs.txt', SL_trajectory3, completeness_records=completenesses_walking, graphs=False, walking_erosion_depo=True)
 #     tscales, completenesses_restricted = mydelta.execute('synth_inputs.txt', SL_trajectory3, completeness_records=completenesses_restricted, graphs=False, restricted_channel_mass_conserved=True)
 #     tscales, completenesses_compensated = mydelta.execute('synth_inputs.txt', SL_trajectory3, completeness_records=completenesses_compensated, graphs=False, compensation=True)
-tscales, completenesses_whole = mydelta.execute('sensitivity_inputs.txt', SL_trajectory=SL_miller, completeness_records=completenesses_whole, graphs=True)
+tscales, completenesses_whole = mydelta.execute('sensitivity_inputs.txt', SL_trajectory=SL_miller, completeness_records=completenesses_whole, graphs=True, initial_topo=(3000.,0.))
 # tscales, completenesses_noE = mydelta.execute('synth_inputs.txt', SL_trajectory3, graphs=False, completeness_records=completenesses_noE, never_erosion=True)
 # mean_comp_walking = np.mean(completenesses_walking, axis=0)
 mean_comp_whole = np.mean(completenesses_whole, axis=0)
