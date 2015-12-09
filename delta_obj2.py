@@ -174,7 +174,11 @@ class delta(object):
 
         """
         # load the input params from the textfile:
-        input_dict = self.read_input_file(input_file)
+        if type(input_file) is str:
+            input_dict = self.read_input_file(input_file)
+        else:
+            assert type(input_file) is dict
+            input_dict = input_file
         # also check we don't need to overwrite anything from the arguments...
         for varname in self.init_inputs:
             try:
@@ -206,6 +210,7 @@ class delta(object):
             Q = float(Q)
 
         rnode = np.arange(0.5, n+0.5, 1.)**0.5 * delr/np.sqrt(0.5)
+        self.rnode = rnode
         px_left_edge = np.zeros_like(rnode)
         px_left_edge[1:] = (rnode[1:] - rnode[:-1])/2. + rnode[1:]
         delr = rnode[1:]-rnode[:-1] #this is cludgey, should do accurately
