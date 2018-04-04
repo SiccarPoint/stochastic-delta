@@ -28,9 +28,19 @@ figcounter = 0
 
 mydeltasims = []  # store each sim here
 
-Q_options = [np.loadtxt('U5e-4Acc5dt200_13.40.11_sedfluxout.txt'),
-             np.loadtxt('U5e-4Acc10dt200_13.40.11_sedfluxout.txt'),
-             np.loadtxt('U5e-4Acc20dt200_13.40.11_sedfluxout.txt')]
+Q_options = [np.loadtxt('SPU5e-4Acc5dt200_12.30.44_sedfluxout.txt'),
+             np.loadtxt('SPU5e-4Acc10dt200_12.30.44_sedfluxout.txt'),
+             np.loadtxt('SPU5e-4Acc20dt200_12.30.44_sedfluxout.txt')]
+
+# screwed up the normalization in the SP runs, so apply janky but robust
+# normalization:
+Q_options_sde = [np.loadtxt('U5e-4Acc5dt200_13.40.11_sedfluxout.txt'),
+                 np.loadtxt('U5e-4Acc10dt200_13.40.11_sedfluxout.txt'),
+                 np.loadtxt('U5e-4Acc20dt200_13.40.11_sedfluxout.txt')]
+
+for SP, SDE in zip(Q_options, Q_options_sde):
+    ratio = SDE[0]/SP[0]
+    SP *= ratio
 
 accel_options = [5., 10., 20.]
 
@@ -45,13 +55,9 @@ def load_mydelta_and_strat(fname, accel):
     else:
         raise NameError
 
-    if np.isclose(accel, 20.):
-        len_drift = 400.
-    else:
-        len_drift = 600.
-    drift_up = np.arange(len_drift, dtype=float)/len_drift*(
-        accel*Uinit - Q_in[-1]) + Q_in[-1]
-    Q_real = np.concatenate((Uinit*np.ones(400), Q_in, drift_up))
+    len_drift = 800.
+    Q_real = np.concatenate((Q_in[0]*np.ones(400), Q_in,
+                             Q_in[-1]*np.ones(len_drift)))
     Q_real *= flux_scaling
     # ^does this need adjusting for dt?
 
@@ -92,14 +98,12 @@ def load_mydelta_and_strat(fname, accel):
 
 for (Q_in, accel) in zip(Q_options, accel_options):
     # add buffers before and after to get to nt = 1600
-    if np.isclose(accel, 20.):
-        len_drift = 400.
-    else:
-        len_drift = 600.
+    len_drift = 800.
     drift_up = np.arange(len_drift, dtype=float)/len_drift*(
         accel*Uinit - Q_in[-1]) + Q_in[-1]
 
-    Q_real = np.concatenate((Uinit*np.ones(400), Q_in, drift_up))
+    Q_real = np.concatenate((Q_in[0]*np.ones(400), Q_in,
+                             Q_in[-1]*np.ones(len_drift)))
     Q_real *= flux_scaling
     # ^does this need adjusting for dt?
 
@@ -153,7 +157,7 @@ for (Q_in, accel) in zip(Q_options, accel_options):
         plot(mydelta.radial_distances[rollover_index],
              mydelta.strata[i, rollover_index], 'k,')
 
-    f = open('mydelta' + str(int(accel)) + '.save', 'wb')
+    f = open('mydeltaSP' + str(int(accel)) + '.save', 'wb')
     pickle.dump(mydelta, f, protocol=pickle.HIGHEST_PROTOCOL)
     f.close()
     figcounter += 1
