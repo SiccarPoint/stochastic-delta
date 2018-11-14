@@ -15,6 +15,53 @@ import numpy as np
 from pylab import figure, plot, show, close, savefig
 import matplotlib.pyplot as plt
 
+
+def _section_is_within_activity_zone(section_pos, ch_pos, width):
+    """
+    >>> _section_is_within_activity_zone(0.5, 0.4, 0.4)
+    True
+    >>> _section_is_within_activity_zone(0.5, 0.2, 0.4)
+    False
+    >>> _section_is_within_activity_zone(0.1, 0.9, 0.5)
+    True
+    >>> _section_is_within_activity_zone(0.1, 0.9, 0.2)
+    False
+    >>> _section_is_within_activity_zone(0.9, 0.1, 0.5)
+    True
+    >>> _section_is_within_activity_zone(0.9, 0.1, 0.3)
+    False
+    >>> _section_is_within_activity_zone(0., 1., 1.)
+    True
+    >>> _section_is_within_activity_zone(1., 0., 1.)
+    True
+    >>> _section_is_within_activity_zone(0.5, (0.4, 0.2), 0.4)
+    array([True, False])
+    >>> _section_is_within_activity_zone((0.1, 0.9), (0.9, 0.1), (0.2, 0.5))
+    array([False, True])
+    """
+    if type(section_pos) is float and type(ch_pos) is float:
+        lower_ch_lim = ch_pos - width/2.
+        upper_ch_lim = ch_pos + width/2.
+        for sect in (section_pos, section_pos + 1, section_pos - 1):
+            if sect <= upper_ch_lim and lower_ch_lim <= sect:
+                return True
+        return False
+    else:
+        lower_ch_lim = np.array(ch_pos) - np.array(width)/2.
+        upper_ch_lim = np.array(ch_pos) + np.array(width)/2.
+        section_posA = np.array(section_pos)
+        for transpos in (0., -1., 1.):
+            cond1 = np.less_equal(section_posA + transpos, upper_ch_lim)
+            cond2 = np.greater_equal(section_posA + transpos, lower_ch_lim)
+            true_here = np.logical_and(cond1, cond2)
+            try:
+                np.logical_or(true_here, mastertrue, out=mastertrue)
+            except NameError:
+                mastertrue = true_here
+        return mastertrue
+
+
+
 class delta(object):
     """
     This object creates, updates, and maintains a geometrically controlled
@@ -399,13 +446,17 @@ class delta(object):
                 stepwise_depo = np.ones(nt, dtype=bool)
                 stepwise_inc = np.zeros(nt, dtype=bool)
             elif walking_erosion_depo or compensation:
-                channel_pos_off_ends = np.where(looped_round!=0,
-                                                channel_position+looped_round,
-                                                channel_position)
-                stepwise_depo = np.less(np.absolute(section_position-channel_pos_off_ends),
-                                        depo_py_width/2.)
-                stepwise_inc = np.less(np.absolute(section_position-channel_pos_off_ends),
-                                       erosion_py_width/2.)
+                # channel_pos_off_ends = np.where(looped_round!=0,
+                #                                 channel_position+looped_round,
+                #                                 channel_position)
+                # stepwise_depo = np.less(np.absolute(section_position-channel_pos_off_ends),
+                #                         depo_py_width/2.)
+                # stepwise_inc = np.less(np.absolute(section_position-channel_pos_off_ends),
+                #                        erosion_py_width/2.)
+                stepwise_depo = _section_is_within_activity_zone(
+                    section_position, channel_position, depo_py_width)
+                stepwise_inc = _section_is_within_activity_zone(
+                    section_position, channel_position, erosion_py_width)
                 if compensation:
                     deposition_accum = np.zeros(100, dtype=int)
                     # ^ a quantized number line to record where and how much
@@ -574,12 +625,18 @@ class delta(object):
                             erosion_py_width = inc_term_in
                             sedflux_modifier = 1./depo_term_in
                             erosion_modifier = inc_term_in/depo_term_in
-                    depo_can_occur = np.less(np.absolute(section_position -
-                                                     channel_pos_off_ends[jj]),
-                                             depo_py_width/2.)
-                    erosion_can_occur_on_topset = np.less(np.absolute(
-                                    section_position-channel_pos_off_ends[jj]),
-                                                          erosion_py_width/2.)
+                    # depo_can_occur = np.less(np.absolute(section_position -
+                    #                                  channel_pos_off_ends[jj]),
+                    #                          depo_py_width/2.)
+                    depo_can_occur = _section_is_within_activity_zone(
+                        section_position, channel_position[jj], depo_py_width)
+                    # erosion_can_occur_on_topset = np.less(np.absolute(
+                    #                 section_position-channel_pos_off_ends[jj]),
+                    #                                       erosion_py_width/2.)
+                    erosion_can_occur_on_topset = (
+                        _section_is_within_activity_zone(section_position,
+                                                         channel_position[jj],
+                                                         erosion_py_width))
                 else:
                     raise NameError
             else:
@@ -742,19 +799,25 @@ class delta(object):
                     if jj!=nt-1:  # all as above to reset new ch positions
                         channel_position[jj+1] = channel_position[jj] + \
                                                    channel_position_steps[jj+1]
-                        channel_pos_off_ends[jj+1] = float(channel_position[jj+1])
+                        # channel_pos_off_ends[jj+1] = float(channel_position[jj+1])
                         if channel_position[jj+1] > 1.:  # loop to the other end
                             channel_position[jj+1] -= 1.
                             looped_round[jj+1] = 1
                         elif channel_position[jj+1] < 0.:  # reverse direction from 0.
                             channel_position[jj+1] += 1.
                             looped_round[jj+1] = -1.
-                        stepwise_depo[jj+1] = np.less(np.absolute(section_position -
-                                                  channel_pos_off_ends[jj+1]),
-                                                  depo_py_width/2.)
-                        stepwise_inc[jj+1] = np.less(np.absolute(section_position -
-                                                  channel_pos_off_ends[jj+1]),
-                                                  erosion_py_width/2.)
+                        # stepwise_depo[jj+1] = np.less(np.absolute(section_position -
+                        #                           channel_pos_off_ends[jj+1]),
+                        #                           depo_py_width/2.)
+                        # stepwise_inc[jj+1] = np.less(np.absolute(section_position -
+                        #                           channel_pos_off_ends[jj+1]),
+                        #                           erosion_py_width/2.)
+                        stepwise_depo[jj+1] = _section_is_within_activity_zone(
+                            section_position, channel_position[jj+1],
+                            depo_py_width)
+                        stepwise_inc[jj+1] = _section_is_within_activity_zone(
+                            section_position, channel_position[jj+1],
+                            erosion_py_width)
                         out_of_section_oldeta[:] = out_of_section_eta
 
             Qvol_lasttime = float(DelVol)  # force a copy
